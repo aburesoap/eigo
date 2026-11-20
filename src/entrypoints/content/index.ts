@@ -1,6 +1,8 @@
 import { browser } from 'wxt/browser';
 import { defineContentScript } from 'wxt/utils/define-content-script';
-import { Analyzer, HIGHLIGHT_CSS } from '../../content/analyzer';
+import { Analyzer, HIGHLIGHT_CSS, type TokenRecord } from '../../content/analyzer';
+import { PopoverHost } from '../../content/popover';
+import { extractSentence } from '../../core/sentence';
 import { sendToBackground, type ContentMessage, type ContentStats } from '../../messaging/protocol';
 import { PageDomSource } from '../../sources/page-dom';
 import { getSettings, isSiteEnabled, watchSettings, type Settings } from '../../settings';
@@ -19,6 +21,50 @@ export default defineContentScript({
     const style = document.createElement('style');
     style.textContent = HIGHLIGHT_CSS;
 
+    const popover = new PopoverHost({
+      known: (lemma) => sendToBackground('setStatus', { lemma, status: 'known' }),
+      ignore: (lemma) => sendToBackground('setStatus', { lemma, status: 'ignored' }),
+      save: async (data, meaning) => {
+        await sendToBackground('saveCard', {
+          card: {
+            lemma: data.lemma,
+            surface: data.surface,
+            sentence: data.sentence,
+            url: location.href,
+            title: document.title,
+            meaning,
+          },
+        });
+      },
+    });
+
+    const onClick = (e: MouseEvent) => {
+      if (!analyzer || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (popover.element && e.composedPath().includes(popover.element)) return;
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim()) return; // user is selecting text
+      const hit = wordAt(analyzer, e.clientX, e.clientY);
+      if (!hit) return;
+      // Inside links / interactive elements the page's own behaviour wins unless Alt is held.
+      const interactive = (e.target as Element | null)?.closest?.(INTERACTIVE_SELECTOR);
+      if (interactive && !e.altKey) return;
+      if (interactive) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const { rec, rect } = hit;
+      popover.open(
+        {
+          lemma: rec.lemma,
+          surface: rec.surface,
+          sentence: extractSentence(rec.seg.text, rec.start, rec.end),
+          status: analyzer.statusOf(rec.lemma),
+          lookup: sendToBackground('lookup', { surface: rec.surface, lemma: rec.lemma }),
+        },
+        rect,
+      );
+    };
+
     const start = () => {
       if (analyzer || !settings) return;
       (document.head ?? document.documentElement).appendChild(style);
@@ -27,6 +73,7 @@ export default defineContentScript({
         onStats: (s) => void sendToBackground('pageStats', { coverage: s.coverage, level: s.level }).catch(() => {}),
         showLearning: settings.showLearning,
       });
+      document.addEventListener('click', onClick, true);
       source = new PageDomSource(document);
       const a = analyzer;
       source.start(
@@ -39,6 +86,8 @@ export default defineContentScript({
     };
 
     const stop = () => {
+      document.removeEventListener('click', onClick, true);
+      popover.destroy();
       source?.stop();
       analyzer?.destroy();
       source = null;
@@ -87,9 +136,42 @@ export default defineContentScript({
     ctx.onInvalidated(() => {
       unwatch();
       browser.runtime.onMessage.removeListener(onMessage);
+      document.removeEventListener('click', onClick, true);
+      popover.destroy();
       source?.stop();
       analyzer?.destroy();
       style.remove();
     });
   },
 });
+
+const INTERACTIVE_SELECTOR = 'a[href], button, [role="button"], [role="link"], label, summary, [onclick]';
+
+function caretAt(x: number, y: number): { node: Node; offset: number } | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  if (doc.caretPositionFromPoint) {
+    const p = doc.caretPositionFromPoint(x, y);
+    return p ? { node: p.offsetNode, offset: p.offset } : null;
+  }
+  const r = document.caretRangeFromPoint?.(x, y);
+  return r ? { node: r.startContainer, offset: r.startOffset } : null;
+}
+
+/** The underlined word under the pointer, with its on-screen rectangle. */
+function wordAt(analyzer: Analyzer, x: number, y: number): { rec: TokenRecord; rect: DOMRect } | null {
+  const pos = caretAt(x, y);
+  if (!pos) return null;
+  const rec = analyzer.recordAt(pos.node, pos.offset);
+  if (!rec) return null;
+  // caretPositionFromPoint snaps to the nearest character, so confirm the pointer is on the word.
+  const range = document.createRange();
+  range.setStart(rec.startNode, rec.startOffset);
+  range.setEnd(rec.endNode, rec.endOffset);
+  const pad = 2;
+  for (const r of range.getClientRects()) {
+    if (x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad) return { rec, rect: r };
+  }
+  return null;
+}
