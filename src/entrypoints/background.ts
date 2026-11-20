@@ -1,7 +1,9 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
+import { deleteCards, reviewCard, updateCard } from '../background/cards';
 import { Engine } from '../background/engine';
 import { badgeText, LEVEL_COLORS } from '../core/stats';
+import { loadTodayQueue } from '../db/queries';
 import { db } from '../db/schema';
 import type { BgApi, BgMessage } from '../messaging/protocol';
 import { getSettings } from '../settings';
@@ -22,6 +24,13 @@ const handlers: Handlers = {
     await browser.action.setBadgeText({ tabId, text: badgeText(coverage) });
     await browser.action.setBadgeBackgroundColor({ tabId, color: LEVEL_COLORS[level] });
     await browser.action.setBadgeTextColor?.({ tabId, color: '#ffffff' });
+  },
+  reviewCard: ({ cardId, rating }) => reviewCard(engine, cardId, rating),
+  updateCard: ({ id, patch }) => updateCard(engine, id, patch),
+  deleteCards: ({ ids }) => deleteCards(engine, ids),
+  dueCounts: async () => {
+    const q = await loadTodayQueue(await getSettings());
+    return { fresh: q.fresh.length, learning: q.learning.length, review: q.review.length };
   },
 };
 

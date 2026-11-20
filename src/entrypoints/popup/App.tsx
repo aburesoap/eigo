@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import type { Level } from '../../core/stats';
 import type { ListStatus } from '../../db/schema';
-import { sendToBackground, type ContentMessage, type ContentStats } from '../../messaging/protocol';
+import { sendToBackground, type ContentMessage, type ContentStats, type DueCounts } from '../../messaging/protocol';
 import { setSiteEnabled } from '../../settings';
 
 const LEVEL_LABEL: Record<Level, string> = {
@@ -36,6 +36,15 @@ async function fetchStats(): Promise<State> {
 
 export function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
+  const [due, setDue] = useState<DueCounts | null>(null);
+  useEffect(() => {
+    sendToBackground('dueCounts', {}).then(setDue, () => {});
+  }, []);
+  const dueTotal = due ? due.fresh + due.learning + due.review : 0;
+  const openPage = (path: '/study.html' | '/options.html') => {
+    void browser.tabs.create({ url: browser.runtime.getURL(path) });
+    window.close();
+  };
 
   const refresh = () => void fetchStats().then(setState);
   useEffect(() => {
@@ -71,6 +80,13 @@ export function App() {
       {state.kind === 'loading' && <p class="muted">読み込み中…</p>}
       {state.kind === 'unavailable' && <p class="muted">{state.reason}</p>}
       {state.kind === 'ready' && <StatsView stats={state.stats} onMark={mark} />}
+
+      <div class="links">
+        <button class="primary" onClick={() => openPage('/study.html')}>
+          復習する{due ? `（${dueTotal}）` : ''}
+        </button>
+        <button onClick={() => openPage('/options.html')}>設定</button>
+      </div>
     </div>
   );
 }

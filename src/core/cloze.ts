@@ -38,9 +38,3 @@ export function makeCloze(sentence: string, surface: string, lemma?: string): Cl
   }
   return { before: sentence, answer: surface, after: '', found: false };
 }
-
-/** Blank shown on the card front: keeps the first letter as an optional hint. */
-export function blankFor(answer: string, hint: boolean): string {
-  const len = Math.max(3, answer.length);
-  return hint ? answer[0] + '＿'.repeat(len - 1) : '＿'.repeat(len);
-}

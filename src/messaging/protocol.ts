@@ -4,7 +4,8 @@
 import { browser } from 'wxt/browser';
 import type { Classified, WordStatus } from '../core/classify';
 import type { Level, PageStats } from '../core/stats';
-import type { ListStatus } from '../db/schema';
+import type { ReviewRating } from '../core/srs';
+import type { CardEntry, ListStatus } from '../db/schema';
 
 export interface ClassifyItem {
   key: string;
@@ -36,6 +37,18 @@ export interface BgApi {
   setStatus: { req: { lemma: string; status: ListStatus | null }; res: void };
   saveCard: { req: { card: NewCardInput }; res: { id: string } };
   pageStats: { req: { coverage: number | null; level: Level }; res: void };
+  reviewCard: { req: { cardId: string; rating: ReviewRating }; res: { card: CardEntry; promoted: boolean } };
+  updateCard: { req: { id: string; patch: CardPatch }; res: CardEntry };
+  deleteCards: { req: { ids: string[] }; res: void };
+  dueCounts: { req: Record<string, never>; res: DueCounts };
+}
+
+export type CardPatch = Partial<Pick<CardEntry, 'lemma' | 'surface' | 'sentence' | 'meaning' | 'promoted'>>;
+
+export interface DueCounts {
+  fresh: number;
+  learning: number;
+  review: number;
 }
 
 export type BgMessage = { [K in keyof BgApi]: { type: K } & BgApi[K]['req'] }[keyof BgApi];
