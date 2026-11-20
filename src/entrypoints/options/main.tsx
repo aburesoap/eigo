@@ -1,4 +1,6 @@
 import { render } from 'preact';
 import '../../ui/base.css';
+import './options.css';
+import { App } from './App';
 
-render(<p style={{ padding: '16px' }}>設定ページ（ステップ⑤で実装）</p>, document.getElementById('app')!);
+render(<App />, document.getElementById('app')!);

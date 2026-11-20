@@ -4,6 +4,7 @@
 import { browser } from 'wxt/browser';
 import type { Classified, WordStatus } from '../core/classify';
 import type { Level, PageStats } from '../core/stats';
+import type { Backup } from '../core/backup';
 import type { ReviewRating } from '../core/srs';
 import type { CardEntry, ListStatus } from '../db/schema';
 
@@ -41,6 +42,12 @@ export interface BgApi {
   updateCard: { req: { id: string; patch: CardPatch }; res: CardEntry };
   deleteCards: { req: { ids: string[] }; res: void };
   dueCounts: { req: Record<string, never>; res: DueCounts };
+  summary: { req: Record<string, never>; res: { known: number; ignored: number; cards: number; reviews: number } };
+  seed: { req: { size: number }; res: { added: number } };
+  importWordList: { req: { words: string[]; status: ListStatus }; res: { added: number; total: number } };
+  exportBackup: { req: Record<string, never>; res: Backup };
+  importBackup: { req: { backup: Backup; mode: 'merge' | 'replace' }; res: { words: number; cards: number; reviews: number } };
+  resetAll: { req: Record<string, never>; res: void };
 }
 
 export type CardPatch = Partial<Pick<CardEntry, 'lemma' | 'surface' | 'sentence' | 'meaning' | 'promoted'>>;

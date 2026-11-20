@@ -15,7 +15,8 @@
     "test": "vitest run",
     "build:data": "tsx scripts/build-data.ts",
     "postinstall": "wxt prepare",
-    "fetch:data": "bash scripts/fetch-data.sh"
+    "fetch:data": "bash scripts/fetch-data.sh",
+    "e2e": "wxt build && node tests/e2e/run.mjs && node tests/e2e/popover.mjs && node tests/e2e/study.mjs && node tests/e2e/options.mjs"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.6",

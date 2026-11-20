@@ -3,7 +3,7 @@ import { browser } from 'wxt/browser';
 import type { Level } from '../../core/stats';
 import type { ListStatus } from '../../db/schema';
 import { sendToBackground, type ContentMessage, type ContentStats, type DueCounts } from '../../messaging/protocol';
-import { setSiteEnabled } from '../../settings';
+import { getSettings, setSiteEnabled } from '../../settings';
 
 const LEVEL_LABEL: Record<Level, string> = {
   easy: '快適',
@@ -37,8 +37,10 @@ async function fetchStats(): Promise<State> {
 export function App() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [due, setDue] = useState<DueCounts | null>(null);
+  const [onboarded, setOnboarded] = useState(true);
   useEffect(() => {
     sendToBackground('dueCounts', {}).then(setDue, () => {});
+    void getSettings().then((s) => setOnboarded(s.onboarded));
   }, []);
   const dueTotal = due ? due.fresh + due.learning + due.review : 0;
   const openPage = (path: '/study.html' | '/options.html') => {
@@ -62,7 +64,7 @@ export function App() {
     <div class="wrap">
       <div class="head">
         <h1>eigo</h1>
-        {state.kind === 'ready' && (
+        {onboarded && state.kind === 'ready' && (
           <label class="toggle">
             <input
               type="checkbox"
@@ -77,9 +79,15 @@ export function App() {
         )}
       </div>
 
-      {state.kind === 'loading' && <p class="muted">読み込み中…</p>}
-      {state.kind === 'unavailable' && <p class="muted">{state.reason}</p>}
-      {state.kind === 'ready' && <StatsView stats={state.stats} onMark={mark} />}
+      {!onboarded && (
+        <p>
+          最初に既知語の初期設定をしてください。{' '}
+          <a href="#" onClick={(e) => { e.preventDefault(); openPage('/options.html'); }}>初期設定を開く</a>
+        </p>
+      )}
+      {onboarded && state.kind === 'loading' && <p class="muted">読み込み中…</p>}
+      {onboarded && state.kind === 'unavailable' && <p class="muted">{state.reason}</p>}
+      {onboarded && state.kind === 'ready' && <StatsView stats={state.stats} onMark={mark} />}
 
       <div class="links">
         <button class="primary" onClick={() => openPage('/study.html')}>

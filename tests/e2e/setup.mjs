@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path';
 const { chromium } = createRequire(import.meta.url)('playwright');
 export const root = resolve(import.meta.dirname, '../..');
 
-export async function launch({ fixture = 'fixture.html' } = {}) {
+export async function launch({ fixture = 'fixture.html', onboard = true } = {}) {
   const ext = join(root, '.output/chrome-mv3');
   const html = readFileSync(join(import.meta.dirname, fixture));
   const server = http.createServer((_, res) => { res.setHeader('content-type', 'text/html'); res.end(html); }).listen(0);
@@ -21,9 +21,18 @@ export async function launch({ fixture = 'fixture.html' } = {}) {
   let [sw] = ctx.serviceWorkers();
   sw ??= await ctx.waitForEvent('serviceworker');
   const extId = sw.url().split('/')[2];
-  await new Promise((r) => setTimeout(r, 1500)); // first-run seeding
+  // First run: the setup page opens automatically; complete it with the default (5000 words).
+  const deadline = Date.now() + 10_000;
+  let setup;
+  while (!(setup = ctx.pages().find((p) => p.url().includes('/options.html'))) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+  if (!setup) throw new Error('setup page did not open');
+  if (onboard) {
+    await setup.locator('button', { hasText: 'この設定で始める' }).click();
+    await setup.locator('.stats').waitFor();
+    await setup.close();
+  }
   const close = async () => { await ctx.close(); server.close(); };
-  return { ctx, sw, extId, url, close };
+  return { ctx, sw, extId, url, close, setup };
 }
 
 /** Words currently in a highlight. */

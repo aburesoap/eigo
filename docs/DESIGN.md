@@ -1,6 +1,20 @@
-# 設計書（v0.1・確認待ち）
+# 設計書（v0.1）
 
-ローカル完結型の英語学習ブラウザ拡張機能。この文書は実装前の設計提案です。
+ローカル完結型の英語学習ブラウザ拡張機能の設計です。実装前の提案をもとに、実装時に変えた点を §0 にまとめています。
+
+## 0. 実装時の変更点（提案からの差分）
+
+| 項目 | 提案 | 実装 | 理由 |
+|---|---|---|---|
+| 辞書の置き場所 | IndexedDB に投入 | background がメモリに読み込む（`fetch` → `JSON.parse`、約 50ms） | 見出し語化の候補選びにも見出し語の集合が必要なため。初回の投入待ちもなくなる |
+| 下線のスタイル | 波線 | 実線 2px（学習中は青い点線） | `::highlight` の波線は単語の切れ目で描画が崩れたため |
+| 初期の既知語数 | 1000 / 3000 / 5000 | 0 / 1000 / 3000 / 5000 / 8000 / 10000（既定は 5000） | Wikipedia 由来のリストは日常語が下位に来やすい（`smell` が 6080 位） |
+| 副詞 | — | `-ly` の副詞は、元の形容詞が既知なら既知扱い（slowly → slow） | 下線が多すぎる問題への対策 |
+| ポップオーバー | ボタンのみ | K / S / I / Esc のキー操作を追加 | 操作の効率化と、closed Shadow DOM のままでの E2E テストのため |
+| 初回起動 | — | 初期設定が終わるまで下線を表示しない | 全単語に下線が引かれるのを避けるため |
+| 昇格したカード | — | 同じ見出し語のカードもまとめて「昇格済み」にし、復習の対象から外す（編集で戻せる） | 既知語になった語を復習し続けないため |
+| 学習中ステップ | — | 他に出題がなければ、20分以内に期限が来る学習中のカードを先に出す（learn-ahead） | 短い間隔のステップで待たされないようにするため |
+
 
 ## 1. 技術スタック
 
@@ -14,7 +28,7 @@
 | SRS | ts-fsrs 6 | MIT | FSRSの公式TS実装 |
 | テスト | Vitest | MIT | Viteと設定を共有できる |
 | 英和辞書 | EJDict-hand | CC0（パブリックドメイン） | 確認済み |
-| 頻出語 | 下記 §6 | MIT（要確認事項あり） | |
+| 頻出語 | 下記 §6 | MIT | |
 
 Svelteではなく **Preact** を提案します。ポップオーバーはShadow DOMの中で描画するため、ランタイムが小さく、CSSをコンポーネント側に閉じ込めやすい方が扱いやすいからです。
 
@@ -65,40 +79,33 @@ interface TextSegment { node: Text; text: string; blockText: () => string }
 
 ```
 eigo/
-├─ wxt.config.ts
-├─ package.json / tsconfig.json / vitest.config.ts
+├─ wxt.config.ts / package.json / tsconfig.json / vitest.config.ts
 ├─ LICENSE (MIT) / THIRD_PARTY_LICENSES.md / README.md / README.ja.md
 ├─ docs/DESIGN.md
-├─ scripts/                    # データ生成（ビルド時に1回だけ実行。生成物はコミットする）
-│  ├─ build-dict.ts            # EJDict-hand → public/data/dict.json
-│  └─ build-freq.ts            # 頻出語リスト → 見出し語化・重複除去 → public/data/freq.json
-├─ public/data/                # 同梱データ（生成物）
+├─ scripts/
+│  ├─ fetch-data.sh            # 元データのダウンロード（リビジョン固定）→ data-src/（git 管理外）
+│  ├─ build-data.ts            # → public/data/dict.json, freq.json（生成物はコミットする）
+│  ├─ icon.svg / render-icons.mjs
+├─ public/data/  public/icon/  # 同梱データとアイコン
 ├─ src/
 │  ├─ core/                    # 純粋関数のみ（ブラウザAPIなし・単体テストの対象）
-│  │  ├─ tokenize.ts           # 単語の抽出、URL・メールのマスク、縮約形・ハイフン語の処理
-│  │  ├─ filters.ts            # 固有名詞・頭字語・数字の除外
-│  │  ├─ lemmatize.ts          # wink-lemmatizerのラッパー（名詞・動詞・形容詞の候補から選ぶ）
-│  │  ├─ classify.ts           # known / ignored / unknown の判定
-│  │  ├─ sentence.ts           # 文境界の検出（Intl.Segmenter＋略語の補正）
-│  │  ├─ stats.ts              # 既知語率、異なり語、未知語の上位、難易度の区分
-│  │  ├─ cloze.ts              # 例文の穴埋め生成
-│  │  ├─ srs.ts                # ts-fsrsのラッパー、今日のキュー、昇格の判定
-│  │  ├─ backup.ts             # エクスポート形式、インポートの検証とマージ
-│  │  └─ types.ts
-│  ├─ db/
-│  │  ├─ schema.ts             # Dexieのスキーマとバージョン
-│  │  └─ repo.ts               # words / cards / reviews / dict へのアクセス
-│  ├─ messaging/protocol.ts    # 型付きのメッセージ定義
-│  ├─ settings.ts              # storage.localの設定と既定値
-│  ├─ sources/page-dom.ts      # TextSourceの実装（将来 youtube.ts を追加）
-│  ├─ ui/                      # 共通コンポーネント・スタイル
-│  └─ entrypoints/
-│     ├─ background.ts
-│     ├─ content/              # index.ts, scanner.ts, highlighter.ts, Popover.tsx
-│     ├─ popup/                # 既知語率、統計、サイトのON/OFF、学習ページへのリンク
-│     ├─ study/                # 復習・カード一覧（unlisted page）
-│     └─ options/              # 初期設定ウィザード、設定、データ管理
-└─ tests/                      # core/ の単体テスト（＋必要ならPlaywrightのE2E）
+│  │  ├─ tokenize.ts           # 単語抽出、URL・コードのマスク、縮約形、大文字の種別
+│  │  ├─ lemmatize.ts          # wink-lemmatizer＋候補選択（見出し語・頻度順位で判断）
+│  │  ├─ classify.ts           # known / ignored / learning / unknown / skip の判定
+│  │  ├─ sentence.ts           # 文境界（Intl.Segmenter＋略語の補正）と長文の切り詰め
+│  │  ├─ stats.ts              # 既知語率・難易度区分・バッジ表示
+│  │  ├─ cloze.ts / dict.ts    # 穴埋め、EJDictの表記の解析
+│  │  ├─ srs.ts                # ts-fsrsのラッパー、連続正解数、今日のキュー
+│  │  └─ backup.ts             # エクスポート形式・検証・マージ、単語リストの解析
+│  ├─ db/schema.ts, queries.ts # Dexieのスキーマ、今日のキュー
+│  ├─ messaging/protocol.ts    # 型付きメッセージ（BgApi / ContentMessage）
+│  ├─ settings.ts              # storage.local の設定
+│  ├─ sources/                 # TextSource（page-dom.ts。将来は字幕用を追加）
+│  ├─ content/                 # analyzer.ts（ハイライト・統計）, popover.tsx（Shadow DOM）
+│  ├─ background/              # engine.ts（辞書・判定・語リスト）, cards.ts, data.ts
+│  ├─ ui/                      # 共通CSS、Meaningコンポーネント
+│  └─ entrypoints/             # background.ts, content/, popup/, study/, options/
+└─ tests/                      # 単体テスト（*.test.ts）と E2E（e2e/*.mjs, Playwright）
 ```
 
 ## 4. データモデル
@@ -121,18 +128,17 @@ reviews: { id: ++auto, cardId: string, rating: 1|2|3|4, reviewedAt: number,
            state: number, elapsedDays: number, scheduledDays: number }
   indexes: cardId, reviewedAt      // 1日の上限の集計と、将来のFSRSパラメータ最適化に使う
 
-dict:    { word: string /*PK, lowercase*/, meaning: string }   // 初回起動時にdict.jsonから一括投入
-meta:    { key: string /*PK*/, value: unknown }               // dictVersion, seededAt など
+meta:    { key: string /*PK*/, value: unknown }               // 将来のマイグレーション用
+// 辞書は IndexedDB に入れず、background が public/data/dict.json をメモリに読み込む
 ```
 - 同じ見出し語のカードを複数作れる（例文が違う場合）。カード一覧ではまとめて表示する
-- カードを保存した語は、まだ既知語ではないので下線は残る（学習中を示す色に変えるのは検討中）
+- カードを保存した語は、まだ既知語ではないので下線は残る。学習中は青い点線で表示する（設定でオフにできる）
 
 ### 設定（storage.local）
 ```ts
-{ seedSize: 1000|3000|5000|0, dailyNewLimit: 20, dailyReviewLimit: 200,
-  promoteAfter: 5, desiredRetention: 0.9, dayStartHour: 4,
-  disabledSites: string[] /* hostname */, enabledByDefault: true,
-  onboarded: boolean }
+{ seedSize: number /* 0|1000|3000|5000|8000|10000 */, dailyNewLimit: 20, dailyReviewLimit: 200,
+  promoteAfter: 5, desiredRetention: 0.9, dayStartHour: 4, clozeHint: true, showLearning: true,
+  disabledSites: string[] /* hostname（www. は除く） */, onboarded: boolean }
 ```
 
 ### エクスポート形式（JSON）
@@ -151,10 +157,10 @@ meta:    { key: string /*PK*/, value: unknown }               // dictVersion, se
    - 全部大文字（2文字以上）の頭字語
    - 文中で大文字始まりの語は固有名詞とみなす。文頭の大文字語は、小文字形が辞書か頻出語にあれば通常の語として扱う
 4. **見出し語化**：小文字化 → wink-lemmatizerで名詞・動詞・形容詞の候補を出す → 既知語・辞書にある候補を優先、無ければ原形に最も近いもの
-5. **判定**：`ignored` → 計算から除外、`known` → 既知、それ以外 → 未知（下線）
+5. **判定**：`ignored` → 計算から除外、`known` → 既知、カードあり → `learning`（未知として数える）、それ以外 → 未知（下線）。`-ly` の副詞は元の形容詞が既知なら既知とみなす
 6. **統計**：既知語率 = 既知 /（既知 + 未知）。区分は ≥98 快適（緑）、95〜98 辞書少し（黄）、<95 難しい（赤）
 
-## 6. 頻出語リストの選定（要確認）
+## 6. 頻出語リストの選定
 
 | 候補 | ライセンス | 判断 |
 |---|---|---|

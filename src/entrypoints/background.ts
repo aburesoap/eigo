@@ -1,12 +1,13 @@
 import { browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
 import { deleteCards, reviewCard, updateCard } from '../background/cards';
+import * as data from '../background/data';
 import { Engine } from '../background/engine';
 import { badgeText, LEVEL_COLORS } from '../core/stats';
 import { loadTodayQueue } from '../db/queries';
 import { db } from '../db/schema';
 import type { BgApi, BgMessage } from '../messaging/protocol';
-import { getSettings } from '../settings';
+import { getSettings, updateSettings } from '../settings';
 
 const engine = new Engine();
 
@@ -32,13 +33,23 @@ const handlers: Handlers = {
     const q = await loadTodayQueue(await getSettings());
     return { fresh: q.fresh.length, learning: q.learning.length, review: q.review.length };
   },
+  summary: () => data.summary(),
+  seed: ({ size }) => data.seed(engine, size),
+  importWordList: ({ words, status }) => data.importWordList(engine, words, status),
+  exportBackup: () => data.exportBackup(),
+  importBackup: ({ backup, mode }) => data.importBackup(engine, backup, mode),
+  resetAll: () => data.resetAll(engine),
 };
 
-async function seedIfEmpty(): Promise<void> {
+/** Open the first-run setup until it has been completed. */
+async function openSetupIfNeeded(): Promise<void> {
   const settings = await getSettings();
-  if ((await db().words.count()) > 0 || settings.seedSize === 0) return;
-  const lemmas = await engine.frequentLemmas(settings.seedSize);
-  await engine.setStatuses(lemmas, 'known', 'seed');
+  if (settings.onboarded) return;
+  if ((await db().words.count()) > 0) {
+    await updateSettings({ onboarded: true }); // data already present (e.g. restored profile)
+    return;
+  }
+  await browser.tabs.create({ url: browser.runtime.getURL('/options.html#setup') });
 }
 
 export default defineBackground(() => {
@@ -55,7 +66,7 @@ export default defineBackground(() => {
     return true; // async response
   });
 
-  browser.runtime.onInstalled.addListener(() => {
-    void seedIfEmpty();
+  browser.runtime.onInstalled.addListener(({ reason }) => {
+    if (reason === 'install') void openSetupIfNeeded();
   });
 });

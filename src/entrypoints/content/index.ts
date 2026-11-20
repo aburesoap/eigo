@@ -98,7 +98,8 @@ export default defineContentScript({
 
     const applySettings = (s: Settings) => {
       settings = s;
-      const next = isSiteEnabled(s, hostname);
+      // Nothing is underlined until the first-run setup registered the known words.
+      const next = s.onboarded && isSiteEnabled(s, hostname);
       if (next && !enabled) start();
       if (!next && enabled) stop();
       enabled = next;
