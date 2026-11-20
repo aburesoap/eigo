@@ -23,6 +23,15 @@ describe('classifyWord', () => {
     expect(classifyWord('however', true, ctx([])).status).toBe('unknown');
     expect(classifyWord('however', true, ctx(['however'])).status).toBe('known');
   });
+  it('treats -ly adverbs of known adjectives as known', () => {
+    expect(classifyWord('slowly', false, ctx(['slow'])).status).toBe('known');
+    expect(classifyWord('happily', false, ctx(['happy'])).status).toBe('known');
+    expect(classifyWord('gently', false, ctx(['gentle'])).status).toBe('known');
+    expect(classifyWord('dynamically', false, ctx(['dynamic'])).status).toBe('known');
+    expect(classifyWord('fully', false, ctx(['full'])).status).toBe('known');
+    expect(classifyWord('slowly', false, ctx([])).status).toBe('unknown');
+    expect(classifyWord('slowly', false, ctx(['slow'], ['slowly'])).status).toBe('ignored');
+  });
   it('builds distinct cache keys', () => {
     expect(classifyKey('may', true)).not.toBe(classifyKey('may', false));
   });

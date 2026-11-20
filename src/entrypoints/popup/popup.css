@@ -1,0 +1,24 @@
+body { width: 340px; }
+.wrap { padding: 12px 14px; display: grid; gap: 12px; }
+.head { display: flex; align-items: center; justify-content: space-between; }
+.head h1 { font-size: 15px; margin: 0; }
+.meter { display: flex; align-items: baseline; gap: 10px; }
+.meter .num { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.meter .label { font-weight: 600; }
+.bar { height: 6px; background: var(--panel); border-radius: 3px; overflow: hidden; }
+.bar > div { height: 100%; }
+.counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.counts div { background: var(--panel); border-radius: 6px; padding: 4px; }
+.counts b { display: block; font-size: 16px; font-variant-numeric: tabular-nums; }
+.counts span { font-size: 11px; color: var(--muted); }
+.list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.list .row { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--border); }
+.list .row:last-child { border-bottom: 0; }
+.list .w { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.list .w.learning { color: var(--learning); }
+.list .c { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; }
+.list button { padding: 0 6px; font-size: 12px; }
+.toggle { display: flex; align-items: center; gap: 8px; }
+.links { display: flex; gap: 8px; }
+.links button { flex: 1; }
+h2 { font-size: 13px; margin: 0 0 4px; }

@@ -31,10 +31,27 @@ export function classifyKey(norm: string, capInitial: boolean): string {
   return capInitial ? `^${norm}` : norm;
 }
 
-export function statusOfLemma(lemma: string, norm: string, ctx: ClassifyContext): WordStatus {
+/**
+ * Possible base adjectives of an "-ly" adverb: slowly → slow, happily → happy,
+ * gently → gentle, dynamically → dynamic, fully → full.
+ */
+export function adverbBases(word: string): string[] {
+  if (word.length < 5 || !word.endsWith('ly')) return [];
+  const out = [word.slice(0, -2), word.slice(0, -1) + 'e'];
+  if (word.endsWith('ily')) out.push(word.slice(0, -3) + 'y');
+  if (word.endsWith('ically')) out.push(word.slice(0, -4));
+  if (word.endsWith('lly')) out.push(word.slice(0, -1));
+  return out;
+}
+
+type StatusContext = Pick<ClassifyContext, 'known' | 'ignored' | 'learning'>;
+
+export function statusOfLemma(lemma: string, norm: string, ctx: StatusContext): WordStatus {
   if (ctx.ignored.has(lemma) || ctx.ignored.has(norm)) return 'ignored';
   if (ctx.known.has(lemma) || ctx.known.has(norm)) return 'known';
   if (ctx.learning.has(lemma)) return 'learning';
+  // An adverb counts as known when its base adjective is known.
+  if (adverbBases(lemma).some((b) => ctx.known.has(b))) return 'known';
   return 'unknown';
 }
 
